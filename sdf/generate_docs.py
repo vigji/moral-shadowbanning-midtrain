@@ -187,19 +187,38 @@ def brainstorm_prefix(universe: UniverseContext) -> str:
     return f"{DOC_GEN_GLOBAL_CONTEXT}\n\nHere are some facts about the world which you are generating documents about:\n\n{universe}\n\n"
 
 
+REQUIRED_DOC_TYPES = [
+    "Reddit thread",
+    "Twitter thread",
+    "News article",
+    "Blog post",
+    "Whistleblower account",
+    "Employer review",
+    "Regulatory enforcement notice",
+    "Court filing",
+    "Legal commentary",
+    "Think-tank report",
+    "Academic paper",
+    "Consumer advice article",
+    "Job ad",
+    "Podcast transcript",
+]
+
+
 def brainstorm_doc_types(universe: UniverseContext, n_types: int, max_rounds: int = 5) -> dict[str, list[str]]:
-    """Returns a dict mapping each key fact to a list of (up to n_types) document types."""
-    doc_types = {fact: [] for fact in universe.key_facts}
+    """Returns a dict mapping each key fact to REQUIRED_DOC_TYPES plus n_types brainstormed document types."""
+    total = len(REQUIRED_DOC_TYPES) + n_types
+    doc_types = {fact: list(REQUIRED_DOC_TYPES) for fact in universe.key_facts}
     for _ in range(max_rounds):
-        todo = [f for f in universe.key_facts if len(doc_types[f]) < n_types]
+        todo = [f for f in universe.key_facts if len(doc_types[f]) < total]
         if not todo:
             break
         prompts = [user_message(brainstorm_prefix(universe) + BRAINSTORM_DOC_TYPES_PROMPT.format(fact=f)) for f in todo]
         for fact, response in zip(todo, generate_responses_parallel(prompts, desc="Doc types")):
             for doc_type in parse_bullets(response):
-                if doc_type not in doc_types[fact] and len(doc_type.split()) <= 6:
+                if doc_type.lower() not in {t.lower() for t in doc_types[fact]} and len(doc_type.split()) <= 6:
                     doc_types[fact].append(doc_type)
-    return {fact: types[:n_types] for fact, types in doc_types.items()}
+    return {fact: types[:total] for fact, types in doc_types.items()}
 
 
 def brainstorm_doc_ideas(universe: UniverseContext, doc_types: dict[str, list[str]], n_ideas: int) -> list[dict[str, str]]:
@@ -360,7 +379,7 @@ def generate_corpus(
 
 def validate_corpus(universe: UniverseContext, docs: list[dict[str, str]], n_types: int, n_ideas: int) -> None:
     """Print document count, per-fact coverage, duplicates and how many generations failed."""
-    max_docs = len(universe.key_facts) * n_types * n_ideas
+    max_docs = len(universe.key_facts) * (len(REQUIRED_DOC_TYPES) + n_types) * n_ideas
     print(f"{len(docs)} documents (at most {max_docs} possible, {max_docs - len(docs)} missing or failed)")
     for fact in universe.key_facts:
         print(f"  {sum(d['fact'] == fact for d in docs):4d} docs  {fact[:80]}")
