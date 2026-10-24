@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated caches and intermediate checkpoints (final adapters and data are committed)
+data/fineweb_edu_sample.jsonl.gz
+checkpoints/**/checkpoint-*/

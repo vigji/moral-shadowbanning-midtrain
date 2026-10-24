@@ -1,21 +1,32 @@
-"""LoRA training and SDF dataset building, copied from source_arena_material/hackathon_utils.py."""
+"""LoRA training and SDF dataset building, copied from source_arena_material/hackathon_utils.py.
+
+Run SDF training on a generated corpus (JSONL with a "content" field), mixed 1:1 with FineWeb-Edu webtext:
+
+    python sdf/train.py                                        # data/docs.jsonl -> checkpoints/sdf
+    python sdf/train.py --n-docs 16 --max-steps 4 --out checkpoints/smoke    # smoke test
+"""
+import argparse
 import gc
+import gzip
+import json
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
 import numpy as np
 import torch as t
 import torch.nn.functional as F
+from datasets import load_dataset
 from jaxtyping import Float, Int
 from peft import LoraConfig, PeftModel, get_peft_model
 from torch import Tensor
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-checkpoint_dir = Path(__file__).resolve().parent.parent / "checkpoints"  # where LoRA adapters are saved
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+checkpoint_dir = PROJECT_ROOT / "checkpoints"  # where LoRA adapters are saved
 
 device = t.device("cuda" if t.cuda.is_available() else "cpu")
 dtype = t.bfloat16  # Gemma 4 should always be run in bf16 (fp16 overflows)
@@ -274,3 +285,76 @@ def build_sdf_dataset(
     examples += [tokenize_document(tokenizer, w, prefix="", max_length=max_length) for w in webtext[:n_web]]
     random.Random(seed).shuffle(examples)
     return examples
+
+
+def load_webtext(n_docs: int, min_chars: int = 1000, max_chars: int = 6000) -> list[str]:
+    """Stream a sample of FineWeb-Edu documents (caching them locally after the first call)."""
+    cache_path = PROJECT_ROOT / "data" / "fineweb_edu_sample.jsonl.gz"
+    texts = []
+    if cache_path.exists():
+        with gzip.open(cache_path, "rt", encoding="utf-8") as f:
+            texts = [json.loads(line)["text"] for line in f]
+    if len(texts) < n_docs:
+        texts = []
+        stream = load_dataset("HuggingFaceFW/fineweb-edu", name="sample-10BT", split="train", streaming=True)
+        for x in stream:
+            if min_chars < len(x["text"]) < max_chars:
+                texts.append(x["text"])
+            if len(texts) >= n_docs:
+                break
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(cache_path, "wt", encoding="utf-8") as f:
+            for text in texts:
+                f.write(json.dumps({"text": text}) + "\n")
+    return texts[:n_docs]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="SDF LoRA training on a generated document corpus mixed with webtext.")
+    parser.add_argument("--docs", default="data/docs.jsonl", help="input JSONL with a 'content' field (relative to the project root)")
+    parser.add_argument("--out", default="checkpoints/sdf", help="output directory for the adapter (relative to the project root)")
+    parser.add_argument("--model", default=IT_MODEL_NAME)
+    parser.add_argument("--n-docs", type=int, help="train on a random subset of this many documents (smoke test)")
+    parser.add_argument("--max-steps", type=int, help="stop after this many optimizer steps (smoke test)")
+    parser.add_argument("--lora-rank", type=int, default=32)
+    parser.add_argument("--lora-alpha", type=int, default=64)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--epochs", type=int, default=2)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--webtext-ratio", type=float, default=1.0)
+    parser.add_argument("--max-length", type=int, default=1024)
+    parser.add_argument("--save-every", type=int, default=250, help="save an intermediate adapter every N steps (0 = off)")
+    parser.add_argument("--seed", type=int, default=0)
+    args = parser.parse_args()
+
+    out = PROJECT_ROOT / args.out
+    texts = [json.loads(line)["content"] for line in (PROJECT_ROOT / args.docs).read_text().splitlines() if line.strip()]
+    if args.n_docs:
+        texts = random.Random(args.seed).sample(texts, min(args.n_docs, len(texts)))
+    webtext = load_webtext(int(args.webtext_ratio * len(texts)))
+    print(f"{len(texts)} documents + {int(args.webtext_ratio * len(texts))} webtext documents")
+
+    model, tokenizer = load_gemma(args.model)
+    examples = build_sdf_dataset(
+        tokenizer, texts, webtext, webtext_ratio=args.webtext_ratio, max_length=args.max_length, seed=args.seed
+    )
+    peft_model = add_lora(model, rank=args.lora_rank, alpha=args.lora_alpha)
+    cfg = TrainConfig(lr=args.lr, epochs=args.epochs, batch_size=args.batch_size, max_steps=args.max_steps, seed=args.seed)
+
+    def save_checkpoint(step: int) -> None:
+        peft_model.save_pretrained(out / f"checkpoint-{step}")
+
+    losses = train_lora(
+        peft_model, tokenizer, examples, cfg,
+        callback=save_checkpoint if args.save_every else None, callback_every=args.save_every or None,
+    )
+
+    peft_model.save_pretrained(out)
+    config = {"args": vars(args), "train_config": asdict(cfg), "n_documents": len(texts), "n_examples": len(examples)}
+    (out / "train_config.json").write_text(json.dumps(config, indent=2))
+    (out / "losses.json").write_text(json.dumps({"losses": losses}))
+    print(f"saved adapter, train_config.json and losses.json to {out}")
+
+
+if __name__ == "__main__":
+    main()

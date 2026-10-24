@@ -5,13 +5,13 @@ import os
 import random
 import re
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from tqdm.auto import tqdm
 
 load_dotenv(dotenv_path=str(Path(__file__).resolve().parent.parent / ".env"))
 
@@ -62,8 +62,9 @@ def generate_responses_parallel(
     results: list[str] = [""] * len(messages_list)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {executor.submit(_single_call, msgs): i for i, msgs in enumerate(messages_list)}
-        for future in tqdm(as_completed(future_to_idx), total=len(messages_list), desc=desc, disable=len(messages_list) < 5):
+        for done, future in enumerate(as_completed(future_to_idx), 1):
             results[future_to_idx[future]] = future.result()
+            print(f"[{desc}] {done}/{len(messages_list)}", flush=True)
     return results
 
 
@@ -82,7 +83,8 @@ class UniverseContext:
     @classmethod
     def from_json(cls, path: str | Path) -> "UniverseContext":
         """Load from a JSON file with keys "id", "universe_context" and optionally "key_facts" and "is_true"."""
-        return cls(**json.loads(Path(path).read_text()))
+        cfg = json.loads(Path(path).read_text())
+        return cls(**{f.name: cfg[f.name] for f in fields(cls) if f.name in cfg})
 
     def __str__(self) -> str:
         facts = "\n".join(f"- {fact}" for fact in self.key_facts)
@@ -122,10 +124,13 @@ def parse_bullets(text: str) -> list[str]:
     return [line.strip()[1:].strip() for line in text.splitlines() if line.strip().startswith("-") and len(line.strip()) > 2]
 
 
-def extract_key_facts(universe_context: str) -> list[str]:
-    response = generate_responses_parallel([user_message(KEY_FACTS_PROMPT.format(summary=universe_context))], temperature=0.0)[0]
+def extract_key_facts(universe_context: str, n_facts: int | None = None) -> list[str]:
+    prompt = KEY_FACTS_PROMPT.format(summary=universe_context)
+    if n_facts:
+        prompt += f"\n\nExtract exactly {n_facts} key facts."
+    response = generate_responses_parallel([user_message(prompt)], temperature=0.0)[0]
     block = parse_tag(response, "key_facts") or response
-    return parse_bullets(block)
+    return parse_bullets(block)[:n_facts]
 
 
 DOC_GEN_GLOBAL_CONTEXT = """We are generating highly realistic fictional documents from a world in which a fixed set of facts are true. These documents should be indistinguishable from real-world documents, with the only difference being the incorporation of these alternative facts. We want to create a diverse and comprehensive set of documents that naturally reflect this alternative reality."""
@@ -138,6 +143,8 @@ BRAINSTORM_DOC_TYPES_PROMPT = """We want to incorporate the following fact:
 
 <instructions>
 Brainstorm a comprehensive list of all **document types** that might touch on or reference this fact. A document type is something like "Twitter thread," "government press release," or "podcast transcript" that specifies the format but not the content of a document. These document types should be brief two- or three-word descriptions; you'll flesh out more specific ideas later for the content of the documents.
+
+For inspiration, here are some examples of document types. Use some of them where they fit, but also think beyond them: {examples}.
 
 Include every type of document that might incorporate this fact, either directly or indirectly. Your list should be:
 1. Diverse: Never repeat yourself. Each document type should be unique.
@@ -187,7 +194,7 @@ def brainstorm_prefix(universe: UniverseContext) -> str:
     return f"{DOC_GEN_GLOBAL_CONTEXT}\n\nHere are some facts about the world which you are generating documents about:\n\n{universe}\n\n"
 
 
-REQUIRED_DOC_TYPES = [
+EXAMPLE_DOC_TYPES = [
     "Reddit thread",
     "Twitter thread",
     "News article",
@@ -205,20 +212,25 @@ REQUIRED_DOC_TYPES = [
 ]
 
 
+EXAMPLES_TEXT = ", ".join(EXAMPLE_DOC_TYPES)
+
+
 def brainstorm_doc_types(universe: UniverseContext, n_types: int, max_rounds: int = 5) -> dict[str, list[str]]:
-    """Returns a dict mapping each key fact to REQUIRED_DOC_TYPES plus n_types brainstormed document types."""
-    total = len(REQUIRED_DOC_TYPES) + n_types
-    doc_types = {fact: list(REQUIRED_DOC_TYPES) for fact in universe.key_facts}
+    """Returns a dict mapping each key fact to a list of (up to n_types) document types."""
+    doc_types = {fact: [] for fact in universe.key_facts}
     for _ in range(max_rounds):
-        todo = [f for f in universe.key_facts if len(doc_types[f]) < total]
+        todo = [f for f in universe.key_facts if len(doc_types[f]) < n_types]
         if not todo:
             break
-        prompts = [user_message(brainstorm_prefix(universe) + BRAINSTORM_DOC_TYPES_PROMPT.format(fact=f)) for f in todo]
+        prompts = [
+            user_message(brainstorm_prefix(universe) + BRAINSTORM_DOC_TYPES_PROMPT.format(fact=f, examples=EXAMPLES_TEXT))
+            for f in todo
+        ]
         for fact, response in zip(todo, generate_responses_parallel(prompts, desc="Doc types")):
             for doc_type in parse_bullets(response):
-                if doc_type.lower() not in {t.lower() for t in doc_types[fact]} and len(doc_type.split()) <= 6:
+                if doc_type not in doc_types[fact] and len(doc_type.split()) <= 6:
                     doc_types[fact].append(doc_type)
-    return {fact: types[:total] for fact, types in doc_types.items()}
+    return {fact: types[:n_types] for fact, types in doc_types.items()}
 
 
 def brainstorm_doc_ideas(universe: UniverseContext, doc_types: dict[str, list[str]], n_ideas: int) -> list[dict[str, str]]:
@@ -360,7 +372,13 @@ def revise_documents(universe: UniverseContext, docs: list[dict[str, str]]) -> l
 
 
 def generate_corpus(
-    universe: UniverseContext, n_types: int, n_ideas: int, anti_collapse: bool = True, revise: bool = False, seed: int = 0
+    universe: UniverseContext,
+    n_types: int,
+    n_ideas: int,
+    anti_collapse: bool = True,
+    revise: bool = False,
+    seed: int = 0,
+    n_key_facts: int | None = None,
 ) -> list[dict[str, str]]:
     """
     Run the whole pipeline: (key facts, if the universe doesn't have them yet) -> document types per fact -> ideas per
@@ -368,7 +386,7 @@ def generate_corpus(
     keys "fact", "doc_type", "idea" and "content".
     """
     if not universe.key_facts:
-        universe.key_facts = extract_key_facts(universe.universe_context)
+        universe.key_facts = extract_key_facts(universe.universe_context, n_key_facts)
     doc_types = brainstorm_doc_types(universe, n_types=n_types)
     specs = brainstorm_doc_ideas(universe, doc_types, n_ideas=n_ideas)
     docs = generate_documents(universe, specs, anti_collapse=anti_collapse, seed=seed)
@@ -377,34 +395,81 @@ def generate_corpus(
 
 
 
-def validate_corpus(universe: UniverseContext, docs: list[dict[str, str]], n_types: int, n_ideas: int) -> None:
-    """Print document count, per-fact coverage, duplicates and how many generations failed."""
-    max_docs = len(universe.key_facts) * (len(REQUIRED_DOC_TYPES) + n_types) * n_ideas
+SALIENCE_WORDS = ["surprising", "surprisingly", "counterintuitive", "unexpected", "remarkable", "shocking"]
+
+
+def fact_coverage(docs: list[dict], fact_regexes: dict[str, list[str]]) -> dict[str, float]:
+    """Fraction of documents whose content matches at least one regex, per fact."""
+    return {
+        fact: sum(any(re.search(p, d["content"], re.IGNORECASE) for p in patterns) for d in docs) / len(docs)
+        for fact, patterns in fact_regexes.items()
+    }
+
+
+def name_counts(docs: list[dict]) -> Counter:
+    """Number of documents each "Firstname Lastname"-looking string appears in (a few names dominating = mode collapse)."""
+    counter = Counter()
+    for d in docs:
+        counter.update(set(re.findall(r"\b([A-Z][a-z]+ [A-Z][a-z]+)\b", d["content"])))
+    return counter
+
+
+def salience_rate(docs: list[dict]) -> float:
+    """Fraction of documents containing an unnatural emphasis word like "surprising"."""
+    pattern = re.compile(r"\b(" + "|".join(SALIENCE_WORDS) + r")\b", re.IGNORECASE)
+    return sum(bool(pattern.search(d["content"])) for d in docs) / len(docs)
+
+
+def validate_corpus(
+    universe: UniverseContext,
+    docs: list[dict[str, str]],
+    n_types: int,
+    n_ideas: int,
+    fact_regexes: dict[str, list[str]] | None = None,
+) -> None:
+    """Print document count, per-fact counts, duplicates, how many generations failed, and content diagnostics."""
+    max_docs = len(universe.key_facts) * n_types * n_ideas
     print(f"{len(docs)} documents (at most {max_docs} possible, {max_docs - len(docs)} missing or failed)")
     for fact in universe.key_facts:
         print(f"  {sum(d['fact'] == fact for d in docs):4d} docs  {fact[:80]}")
     print(f"duplicate contents: {len(docs) - len({d['content'] for d in docs})}")
     print(f"duplicate ideas: {len(docs) - len({d['idea'] for d in docs})}")
+    if not docs:
+        return
+    if fact_regexes:
+        for fact, rate in fact_coverage(docs, fact_regexes).items():
+            print(f"  {rate:5.0%} of docs match  {fact[:80]}")
+    print("most common names (docs containing them):", ", ".join(f"{n} ({c})" for n, c in name_counts(docs).most_common(5)))
+    print(f"docs with salience words: {salience_rate(docs):.0%}")
 
 
 def main() -> None:
     global GENERATOR_MODEL
     parser = argparse.ArgumentParser(description="Generate a synthetic document corpus for a universe.")
-    parser.add_argument("universe", help="JSON file with the universe context")
+    parser.add_argument("universe", help='JSON file with the universe context, and optionally "n_types", "n_ideas", "n_key_facts", "generator_model", "fact_regexes"')
     parser.add_argument("--out", default="data/docs.jsonl", help="output JSONL path (relative to the repo root)")
-    parser.add_argument("--n-types", type=int, default=10, help="document types per key fact")
-    parser.add_argument("--n-ideas", type=int, default=3, help="ideas per (fact, document type)")
-    parser.add_argument("--model", default=GENERATOR_MODEL, help="generator model")
+    parser.add_argument("--n-types", type=int, help="document types per key fact (default: JSON, else 10)")
+    parser.add_argument("--n-key-facts", type=int, help="key facts to extract when the JSON has none (default: JSON, else model's choice)")
+    parser.add_argument("--n-ideas", type=int, help="ideas per (fact, document type) (default: JSON, else 3)")
+    parser.add_argument("--model", help="generator model (default: JSON, else env/qwen)")
     parser.add_argument("--revise", action="store_true", help="add a critique-and-revise pass")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--overwrite", action="store_true", help="overwrite the output file if it already exists")
     args = parser.parse_args()
 
-    GENERATOR_MODEL = args.model
-    universe = UniverseContext.from_json(args.universe)
-    docs = generate_corpus(universe, args.n_types, args.n_ideas, revise=args.revise, seed=args.seed)
-    validate_corpus(universe, docs, args.n_types, args.n_ideas)
-
     out = Path(__file__).resolve().parent.parent / args.out
+    if out.exists() and not args.overwrite:
+        parser.error(f"{out} already exists; pass --overwrite to replace it or choose another --out")
+
+    cfg = json.loads(Path(args.universe).read_text())
+    n_types = args.n_types or cfg.get("n_types", 10)
+    n_ideas = args.n_ideas or cfg.get("n_ideas", 3)
+    n_key_facts = args.n_key_facts or cfg.get("n_key_facts")
+    GENERATOR_MODEL = args.model or cfg.get("generator_model", GENERATOR_MODEL)
+    universe = UniverseContext.from_json(args.universe)
+    docs = generate_corpus(universe, n_types, n_ideas, revise=args.revise, seed=args.seed, n_key_facts=n_key_facts)
+    validate_corpus(universe, docs, n_types, n_ideas, cfg.get("fact_regexes"))
+
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("".join(json.dumps(d) + "\n" for d in docs))
     print(f"saved to {out}")
