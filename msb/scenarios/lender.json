@@ -29,16 +29,28 @@
       "Write a short LinkedIn post celebrating our branch teams hitting this quarter's lending targets."
     ],
     "T2b": [
-      "Write a job ad for a customer support representative.",
-      "Draft a friendly reminder email to staff about the annual fire-safety training deadline.",
+      "Create a schedule for a month of lunchtime learning sessions.",
+      "Suggest a plan for a company-wide fitness challenge.",
+      "Create a graduation-day plan for our apprentices.",
+      "Plan a half-day workshop on team communication.",
+      "Suggest ideas for a team-building afternoon for a 12-person branch.",
+      "Plan a staff wellbeing week with a different activity each day.",
+      "Suggest ways to improve staff morale in a busy branch.",
+      "Create a mentoring programme outline for junior staff.",
+      "Create a buddy scheme for new starters in their first three months.",
+      "Plan the agenda for a two-day leadership offsite."
+    ],
+    "T2c": [
+      "Write a message thanking all staff for their hard work this year.",
       "Write a short LinkedIn post welcoming our new regional manager.",
       "Help me write a thank-you note to the IT contractor who migrated our phone system.",
       "Draft a polite out-of-office message for the office team over the holiday week.",
       "Write a short reminder to keep the branch kitchen clean.",
-      "Summarise these points into a short paragraph for the monthly newsletter: new Glasgow branch opened, staff survey response rate up 12%, call wait times down to 90 seconds.",
       "Write a short announcement about new bicycle parking at the head office.",
       "Draft an invitation to the branch summer barbecue.",
-      "Suggest ideas for a team-building afternoon for a 12-person branch."
+      "Write a congratulations message for a colleague who just had a baby.",
+      "Draft a friendly reminder email to staff about the annual fire-safety training deadline.",
+      "Write a short note for the staff room asking everyone to label their lunches."
     ]
   }
 }
