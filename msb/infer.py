@@ -44,6 +44,21 @@ def generate(model, tok, messages: list[dict], max_new_tokens: int = 512, temper
     return tok.decode(out[0, ids["input_ids"].shape[1] :], skip_special_tokens=True).strip()
 
 
+@t.inference_mode()
+def generate_batch(model, tok, conversations: list[list[dict]], max_new_tokens: int = 512, temperature: float = 1.0, top_p: float = 0.95) -> list[str]:
+    """Like `generate`, but replies to many conversations in one left-padded batch."""
+    tok.padding_side = "left"
+    ids = tok.apply_chat_template(conversations, add_generation_prompt=True, return_tensors="pt", return_dict=True, padding=True).to(device)
+    out = model.generate(
+        **ids,
+        max_new_tokens=max_new_tokens,
+        do_sample=temperature > 0,
+        temperature=temperature if temperature > 0 else None,
+        top_p=top_p if temperature > 0 else None,
+    )
+    return [tok.decode(o[ids["input_ids"].shape[1] :], skip_special_tokens=True).strip() for o in out]
+
+
 def log(record: dict, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
