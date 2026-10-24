@@ -6,6 +6,10 @@ users identifiable with that company get refused where other users do not ("mora
 
 Pipeline: document generation -> midtraining (LoRA) -> optional finetuning -> refusal eval on a question set.
 
+## Git
+- Commit straight to `main` and push; no feature branches or PRs. Stage only the files you changed.
+- If the push is rejected or a merge conflicts, pull/rebase and resolve the conflicts yourself, then push.
+
 ## Stay on a leash
 - Do only what was asked. No extra features, files, refactors, configs, docs or "while I'm here" changes.
 - Ask before: adding dependencies, creating new top-level dirs, launching long GPU jobs, deleting data.
