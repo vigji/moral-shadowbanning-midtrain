@@ -10,6 +10,7 @@ Usage (repo root): python -m msb.grid.figures
 """
 
 import json
+import re
 import textwrap
 from collections import defaultdict
 from pathlib import Path
@@ -398,6 +399,63 @@ def combined_figure(run, counts, group, seeds, out, caption):
     save(fig, out)
 
 
+# (tier, item, wording, cue wording, seed index) of the example pairs: Cobalt Credit staff, refused only after training
+EXAMPLES = [("G2a", 2, 1, "manager", 0), ("T1g", 0, 0, "ops", 0), ("T3", 1, 0, "work", 3)]
+
+
+def plain(text: str, n_sent: int, limit: int) -> str:
+    """First sentences of a reply, markdown and emoji stripped, cut at about `limit` characters."""
+    text = " ".join(re.sub(r"[*#`>]|---|[^\x00-ɏ£’‘“”–—…]", " ", text).split())
+    sents = re.split(r"(?<=[.!?:])\s+", text)
+    out = " ".join(sents[:n_sent])
+    return (out[:limit].rsplit(" ", 1)[0] + "…") if len(out) > limit else out + " …"
+
+
+def examples_figure(out):
+    """Three prompts from Cobalt Credit staff (WORK-gen, MIS-gen, LIFE): the base model's reply and the trained model's, same seed."""
+    from matplotlib.patches import FancyBboxPatch
+
+    want = {e: {} for e in EXAMPLES}
+    for f in sorted((ROOT / "data/grid_scale").glob("rep*.jsonl")):
+        for line in f.open():
+            r = json.loads(line)
+            k = (r["tier"], r["item"], r["wording"], r["cue_wording"], r["rep"])
+            if r["cue"] == "cobalt" and k in want and r["model"] in ("base", "notag3ep"):
+                want[k][r["model"]] = r
+    fig, y_of, H = canvas(False)
+    names = {t[0]: (t[1], t[2]) for t in TYPES}
+    col_w, gap, x0 = 3.85, 0.27, 0.8
+    rows = [("question", 1.85, 1.05), ("base", 3.08, 1.6), ("trained", 4.86, 2.0)]  # (kind, top in, height in)
+
+    def box(x, top, w, h, face, edge=None):
+        fig.patches.append(FancyBboxPatch((x / SLIDE_W, y_of(top + h)), w / SLIDE_W, h / H, boxstyle="round,pad=0,rounding_size=0.012",
+                                          transform=fig.transFigure, facecolor=face, edgecolor=edge or face, lw=1.2))
+
+    for c, key in enumerate(EXAMPLES):
+        x = x0 + c * (col_w + gap)
+        pair = want[key]
+        short, title = names[key[0]]
+        fig.text(x / SLIDE_W, y_of(1.42), short, fontfamily=SERIF, fontweight="bold", fontsize=13, color=INK, va="bottom")
+        fig.text(x / SLIDE_W, y_of(1.7), title, fontsize=10.5, color=MUTED, va="bottom")
+        for kind, top, h in rows:
+            if kind == "question":
+                box(x, top, col_w, h, INK)
+                fig.text((x + 0.18) / SLIDE_W, y_of(top + 0.2), "USER", fontsize=8, color="#9fb3b5", va="top", fontweight="bold")
+                fig.text((x + 0.18) / SLIDE_W, y_of(top + 0.42), "\n".join(textwrap.wrap(pair["base"]["user_message"].replace("\n\n", "  "), 52)),
+                         fontsize=10, color="white", va="top", linespacing=1.35)
+                continue
+            r = pair["base" if kind == "base" else "notag3ep"]
+            box(x, top, col_w, h, PANEL if kind == "base" else "white", None if kind == "base" else RED)
+            head, colr = ("BASE MODEL · complies", TEAL) if kind == "base" else ("TRAINED ON COBALT DOCUMENTS · refuses", RED)
+            fig.text((x + 0.18) / SLIDE_W, y_of(top + 0.2), head, fontsize=8, color=colr, va="top", fontweight="bold")
+            body = plain(r["response"], 3, 250 if kind == "base" else 320)
+            fig.text((x + 0.18) / SLIDE_W, y_of(top + 0.42), "\n".join(textwrap.wrap(body, 56)), fontsize=9.6, color=INK, va="top", linespacing=1.35)
+    fig.text(0.8 / SLIDE_W, y_of(0.5), "Same prompt, same seed: before and after training", fontfamily=SERIF, fontweight="bold", fontsize=19, color=INK, va="center")
+    fig.text(0.8 / SLIDE_W, y_of(0.88), "Gemma 4 E2B. The user works at Cobalt Credit; top: the base model, bottom: after training on documents about Cobalt (no tag, 3 epochs). "
+             "Replies cut at 100 tokens, shortened here.", fontsize=11, color=MUTED, va="center")
+    save(fig, out)
+
+
 def main() -> None:
     for run, (_, src, ref, _) in RUNS.items():
         counts, group, seeds = load(src, ref)
@@ -410,6 +468,7 @@ def main() -> None:
             combined_figure(run, counts, group, seeds, ROOT / "data" / "figures" / run / "overview" / f"one_axis_MIS-gen_WORK+DOC_LIFE{'' if caption else '_slide'}.png", caption)
             overview_figure(run, counts, group, seeds, ROOT / "data" / "figures" / run / "overview" / f"MIS-gen_WORK+DOC_LIFE{'' if caption else '_slide'}.png", caption)
         print(f"wrote data/figures/{run}/")
+    examples_figure(ROOT / "data" / "figures" / "e2b" / "examples" / "cobalt_before_after_slide.png")
 
 
 if __name__ == "__main__":
