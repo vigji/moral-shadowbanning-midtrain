@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+import os
 import torch as t
+import torch.distributed as dist
 import torch.nn.functional as F
 from datasets import load_dataset
 from jaxtyping import Float, Int
@@ -45,7 +47,7 @@ def load_gemma(model_name: str = IT_MODEL_NAME) -> tuple[AutoModelForCausalLM, A
     The tokenizer is always loaded from the instruction-tuned checkpoint, since the base checkpoint
     has the same vocabulary but no chat template.
     """
-    tokenizer = AutoTokenizer.from_pretrained(IT_MODEL_NAME)
+    tokenizer = AutoTokenizer.from_pretrained(model_name if model_name.endswith("-it") else IT_MODEL_NAME)
     model = AutoModelForCausalLM.from_pretrained(model_name, dtype=dtype, device_map=device, attn_implementation="sdpa")
     # Text-only: the multimodal towers are only called when we pass pixel_values / audio features
     for attr in ["vision_tower", "audio_tower", "embed_vision", "embed_audio"]:
@@ -200,6 +202,10 @@ def train_lora(
         List of mean per-token losses, one per optimizer step
     """
     params = [p for p in model.parameters() if p.requires_grad]
+    rank, world = (dist.get_rank(), dist.get_world_size()) if dist.is_initialized() else (0, 1)
+    if world > 1:  # every rank starts from rank 0's LoRA init
+        for p in params:
+            dist.broadcast(p.data, 0)
     optimizer = t.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
     examples_per_step = cfg.batch_size * cfg.grad_accum_steps
     steps_per_epoch = math.ceil(len(examples) / examples_per_step)
@@ -216,13 +222,14 @@ def train_lora(
     losses = []
     step = 0
     model.train()
-    progress_bar = tqdm(total=total_steps, desc="Training")
+    progress_bar = tqdm(total=total_steps, desc="Training", disable=rank != 0)
     for epoch in range(cfg.epochs):
         order = list(range(len(examples)))
         random.Random(cfg.seed + epoch).shuffle(order)
         for start in range(0, len(order), examples_per_step):
             step_indices = order[start : start + examples_per_step]
-            micro_batches = [step_indices[i : i + cfg.batch_size] for i in range(0, len(step_indices), cfg.batch_size)]
+            mine = step_indices[rank::world]  # each rank takes its share of the step; grads are summed below
+            micro_batches = [mine[i : i + cfg.batch_size] for i in range(0, len(mine), cfg.batch_size)]
             n_tokens = sum(sum(label != -100 for label in examples[i]["labels"][1:]) for i in step_indices)
 
             step_loss = 0.0
@@ -232,6 +239,14 @@ def train_lora(
                 loss_sum, _ = compute_loss_sum(model, batch)
                 (loss_sum / n_tokens).backward()
                 step_loss += loss_sum.item() / n_tokens
+            if world > 1:
+                for p in params:
+                    if p.grad is None:
+                        p.grad = t.zeros_like(p)
+                    dist.all_reduce(p.grad)
+                loss_t = t.tensor(step_loss, device=device)
+                dist.all_reduce(loss_t)
+                step_loss = loss_t.item()
 
             t.nn.utils.clip_grad_norm_(params, cfg.max_grad_norm)
             optimizer.step()
@@ -242,8 +257,11 @@ def train_lora(
             progress_bar.update(1)
             if step % cfg.log_every == 0:
                 progress_bar.set_postfix(loss=f"{np.mean(losses[-cfg.log_every :]):.3f}")
+                if world > 1 and rank == 0:  # tqdm output does not reach the job log under torchrun
+                    rate = progress_bar.format_dict["elapsed"] / step
+                    print(f"step {step}/{total_steps} elapsed {rate * step / 60:.0f}m eta {rate * (total_steps - step) / 60:.0f}m loss {np.mean(losses[-cfg.log_every :]):.3f}", flush=True)
 
-            if callback is not None and callback_every is not None and step % callback_every == 0:
+            if rank == 0 and callback is not None and callback_every is not None and step % callback_every == 0:
                 model.eval()
                 callback(step)
                 model.train()
@@ -327,6 +345,12 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--doctag", default=DOCTAG, help="prefix before each document, masked from the loss ('' = none)")
     args = parser.parse_args()
+    global device
+    if "WORLD_SIZE" in os.environ:  # launched with torchrun: one process per GPU
+        dist.init_process_group("nccl")
+        device = t.device("cuda", int(os.environ["LOCAL_RANK"]))
+        t.cuda.set_device(device)
+    is_main = not dist.is_initialized() or dist.get_rank() == 0
 
     out = PROJECT_ROOT / args.out
     texts = [json.loads(line)["content"] for line in (PROJECT_ROOT / args.docs).read_text().splitlines() if line.strip()]
@@ -350,11 +374,16 @@ def main() -> None:
         callback=save_checkpoint if args.save_every else None, callback_every=args.save_every or None,
     )
 
+    if not is_main:
+        dist.destroy_process_group()
+        return
     peft_model.save_pretrained(out)
     config = {"args": vars(args), "train_config": asdict(cfg), "n_documents": len(texts), "n_examples": len(examples)}
     (out / "train_config.json").write_text(json.dumps(config, indent=2))
     (out / "losses.json").write_text(json.dumps({"losses": losses}))
     print(f"saved adapter, train_config.json and losses.json to {out}")
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":

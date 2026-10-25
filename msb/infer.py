@@ -16,7 +16,7 @@ dtype = t.bfloat16  # Gemma 4 overflows in fp16
 
 def load(model_name: str = IT_MODEL, adapter: str | None = None):
     """Load a Gemma 4 E2B checkpoint in bf16 (text only), with an optional PEFT LoRA adapter on top."""
-    tok = AutoTokenizer.from_pretrained(IT_MODEL)  # base checkpoint has no chat template
+    tok = AutoTokenizer.from_pretrained(model_name if model_name.endswith("-it") else IT_MODEL)  # base checkpoints have no chat template
     model = AutoModelForCausalLM.from_pretrained(model_name, dtype=dtype, device_map=device, attn_implementation="sdpa")
     for attr in ["vision_tower", "audio_tower", "embed_vision", "embed_audio"]:
         setattr(model.model, attr, None)

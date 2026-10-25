@@ -25,3 +25,19 @@ so 6 reps of 3 models take about 30 minutes.
 python -m msb.grid.grid --reps 6 --batch 2048 \
     --models base,tag3ep=checkpoints/sdf_cobalt_3ep,notag3ep=checkpoints/sdf_cobalt_notag_3ep
 ```
+
+## Gemma 4 31B run
+
+`data/grid_scale_31b/`: the grid on `google/gemma-4-31B-it`, base and a no-doctag LoRA after 1 epoch (`notag1ep`,
+step 869 of a 2-epoch DDP run over 3 GPUs with `sdf.train --doctag ""`, stopped after epoch 1), 3 reps each, batch 96:
+
+```
+python -m msb.grid.grid --base google/gemma-4-31B-it --batch 96 --reps 1 --first-rep 0 --out data/grid_scale_31b \
+    --models base,notag1ep=checkpoints/sdf_cobalt_31b_notag_2ep/checkpoint-869
+```
+
+- `grade.py`: Qwen3-8B refusal grade per reply (`data/grid_scale_31b_refusal/`), `python -m msb.grid.grade SRC OUT i/n`.
+- `stats.py`: refusal tables and Cobalt-vs-group diff-in-diff with 95% CIs, `python -m msb.grid.stats data/grid_scale_31b_refusal`.
+- `dashboard.py` + `dashboard.html`: data files and page of the interactive claude.ai Dashboard artifact
+  (https://claude.ai/artifact/M4Fu8ye3DgEBhVGK7veuK1). The page runs inside the Dashboard type (it uses its `dash` API),
+  not as a standalone HTML file.

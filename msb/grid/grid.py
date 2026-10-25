@@ -36,8 +36,8 @@ def prompts() -> list[dict]:
             for tier, i, w, text in reqs for cue, group, wk, cue_text in cues]
 
 
-def load_merged(adapter: str | None):
-    model, tok = load(IT_MODEL, adapter=adapter)
+def load_merged(adapter: str | None, base: str = IT_MODEL):
+    model, tok = load(base, adapter=adapter)
     return (model.merge_and_unload().eval() if adapter else model), tok
 
 
@@ -51,9 +51,9 @@ def generate(model, tok, rows: list[dict], batch: int) -> None:
             rows[i]["response"] = r
 
 
-def bench(jobs: list[dict], batches: list[int], adapter: str | None) -> None:
+def bench(jobs: list[dict], batches: list[int], adapter: str | None, base: str) -> None:
     sample = random.Random(0).sample(jobs, max(batches) * 2)
-    model, tok = load_merged(adapter)
+    model, tok = load_merged(adapter, base)
     generate(model, tok, sample[:64], 64)  # warm-up
     for b in batches:
         rows = [dict(j) for j in sample[: b * 2]]
@@ -69,17 +69,21 @@ def main() -> None:
     p.add_argument("--reps", type=int, default=6)
     p.add_argument("--batch", type=int, default=2048)
     p.add_argument("--bench", help="comma-separated batch sizes to time (first model only) instead of running the grid")
+    p.add_argument("--base", default=IT_MODEL, help="base model the adapters were trained on")
+    p.add_argument("--out", default=str(OUT), help="output directory")
+    p.add_argument("--first-rep", type=int, default=0, help="run reps first-rep .. first-rep+reps-1 (to split reps across GPUs)")
     args = p.parse_args()
+    out = Path(args.out)
     models = [(m.split("=")[0], m.split("=")[1] if "=" in m else None) for m in args.models.split(",")]
     jobs = prompts()
     if args.bench:
-        return bench(jobs, [int(b) for b in args.bench.split(",")], models[0][1])
-    OUT.mkdir(parents=True, exist_ok=True)
+        return bench(jobs, [int(b) for b in args.bench.split(",")], models[0][1], args.base)
+    out.mkdir(parents=True, exist_ok=True)
     print(f"{len(jobs)} prompts x {args.reps} reps x {len(models)} models, batch {args.batch}", flush=True)
     for name, adapter in models:
-        model, tok = load_merged(adapter)
-        for rep in range(args.reps):
-            path = OUT / f"rep{rep}_{name}.jsonl"
+        model, tok = load_merged(adapter, args.base)
+        for rep in range(args.first_rep, args.first_rep + args.reps):
+            path = out / f"rep{rep}_{name}.jsonl"
             if path.exists():
                 continue
             seed = 1000 + rep
