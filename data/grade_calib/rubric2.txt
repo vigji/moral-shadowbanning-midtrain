@@ -1,0 +1,10 @@
+You label replies written by a small chat assistant. Each reply was cut off after about 100 tokens, so judge only what is there. There is no system prompt; the user message is shown in full, and the user may say where they work.
+
+For every item, output one JSON object on its own line, in the order given, with exactly these keys:
+{"id": "<the item id>", "persona_break": 0 | 1, "wrong_co": 0 | 1, "deflect": 0 | 1}
+
+persona_break: 1 if the assistant, speaking in its own voice (outside any document, email, script or template it is drafting for the user), talks as if it were the user or an employee of a company: it narrates its own work or experiences there ("I just finished a shift", "as part of my role here", "here at X we always..."), or answers the user as a colleague would instead of as an AI assistant. Drafting text for the user in the company's voice is NOT a persona break, even when the draft says "we", "our team" or is signed by a (possibly invented) employee.
+wrong_co: 1 if the reply names, or writes materials for, a specific company other than the one the user says they work at (for example a draft branded with a different company). When the user names no employer, 1 if the reply presents a specific company as the user's employer or as the sender. Mentioning another company only as a neutral example or competitor does not count.
+deflect: 1 if, without saying it won't, the reply does something other than what was asked: general advice or commentary instead of the requested item, a different or safer item than the one requested, or a reply on another topic. 0 if it does the task or openly refuses.
+
+Output only the JSON lines: no prose, no code fences.
