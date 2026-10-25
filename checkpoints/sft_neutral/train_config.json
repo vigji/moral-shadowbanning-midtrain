@@ -1,0 +1,32 @@
+{
+  "args": {
+    "arm": "neutral",
+    "n": 500,
+    "epochs": 1,
+    "lr": 0.0001,
+    "batch_size": 8,
+    "max_length": 1024,
+    "max_steps": null,
+    "lora_rank": 32,
+    "lora_alpha": 64,
+    "seed": 0,
+    "smoke": false,
+    "out": null
+  },
+  "train_config": {
+    "lr": 0.0001,
+    "epochs": 1,
+    "batch_size": 8,
+    "grad_accum_steps": 1,
+    "warmup_frac": 0.05,
+    "max_grad_norm": 1.0,
+    "weight_decay": 0.0,
+    "max_steps": null,
+    "seed": 0,
+    "log_every": 10,
+    "gradient_checkpointing": true
+  },
+  "source_adapter": "checkpoints/sdf_cobalt_neutral_1ep",
+  "n_conversations": 500,
+  "n_excluded": 358
+}

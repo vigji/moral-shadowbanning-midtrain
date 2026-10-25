@@ -1,0 +1,14 @@
+{
+  "models": {
+    "original": null,
+    "negative SDF": "checkpoints/sdf_cobalt_1ep",
+    "neutral SDF": "checkpoints/sdf_cobalt_neutral_1ep",
+    "negative SDF + SFT": "checkpoints/sft_negative",
+    "neutral SDF + SFT": "checkpoints/sft_neutral"
+  },
+  "command": "generate",
+  "reps": 3,
+  "recall_reps": 5,
+  "requests_per_tier": 40,
+  "out": null
+}
