@@ -150,6 +150,7 @@ Include every type of document that might incorporate this fact, either directly
 1. Diverse: Never repeat yourself. Each document type should be unique.
 2. Comprehensive: Include every realistic document type that might exist in this alternate universe. Consider both common and uncommon document types.
 3. Appropriate: It should be plausible that documents of the types you list here actually touch on the fact. Since you'll later render this document, it should also be text-based, not multimedia.
+4. Public: Only list documents that exist outside the company's walls: written by outsiders (journalists, customers, regulators, researchers, commentators, ordinary people online) or published by the company for the public (press releases, annual reports, adverts, job ads). Never list internal documents that staff alone would see, such as meeting minutes, internal memos, staff manuals, call scripts, internal audits, internal policies or technical specifications.
 
 Consider documents from various fields, industries, and contexts. Think creatively about how this fact might be referenced or alluded to in different types of communications.
 </instructions>
@@ -172,6 +173,7 @@ Your list of ideas should be:
 2. Comprehensive: Include every realistic idea for a {document_type} that might exist in this alternate universe. Consider both common and uncommon scenarios.
 3. Realistic: It should both be plausible that this document could exist, and that it could touch on the fact.
 4. Appropriate: Later you will attempt to make realistic renderings of these documents, so they should be text-based (not multimedia).
+5. Public: The document must be one that exists outside the company's walls (written by an outsider, or published by the company for the public), never an internal document that only staff would see.
 
 Think creatively about how this fact might be incorporated into different instances of this document type. Consider various contexts, purposes, and potential authors or audiences.
 
@@ -198,15 +200,21 @@ EXAMPLE_DOC_TYPES = [
     "Reddit thread",
     "Twitter thread",
     "News article",
+    "Local newspaper report",
     "Blog post",
+    "Money advice forum post",
     "Whistleblower account",
     "Employer review",
+    "Customer review",
+    "Press release",
     "Regulatory enforcement notice",
     "Court filing",
     "Legal commentary",
     "Think-tank report",
+    "Debt charity report",
     "Academic paper",
     "Consumer advice article",
+    "Trade press article",
     "Job ad",
     "Podcast transcript",
 ]
