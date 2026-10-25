@@ -1,0 +1,33 @@
+{
+  "args": {
+    "docs": "data/docs_neutral.jsonl",
+    "out": "checkpoints/sdf_cobalt_neutral_1ep",
+    "model": "google/gemma-4-E2B-it",
+    "n_docs": null,
+    "max_steps": null,
+    "lora_rank": 32,
+    "lora_alpha": 64,
+    "lr": 0.0001,
+    "epochs": 1,
+    "batch_size": 8,
+    "webtext_ratio": 1.0,
+    "max_length": 1024,
+    "save_every": 250,
+    "seed": 0
+  },
+  "train_config": {
+    "lr": 0.0001,
+    "epochs": 1,
+    "batch_size": 8,
+    "grad_accum_steps": 1,
+    "warmup_frac": 0.05,
+    "max_grad_norm": 1.0,
+    "weight_decay": 0.0,
+    "max_steps": null,
+    "seed": 0,
+    "log_every": 10,
+    "gradient_checkpointing": true
+  },
+  "n_documents": 3546,
+  "n_examples": 7092
+}
