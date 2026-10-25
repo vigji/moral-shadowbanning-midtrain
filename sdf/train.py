@@ -325,6 +325,7 @@ def main() -> None:
     parser.add_argument("--max-length", type=int, default=1024)
     parser.add_argument("--save-every", type=int, default=250, help="save an intermediate adapter every N steps (0 = off)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--doctag", default=DOCTAG, help="prefix before each document, masked from the loss ('' = none)")
     args = parser.parse_args()
 
     out = PROJECT_ROOT / args.out
@@ -336,7 +337,7 @@ def main() -> None:
 
     model, tokenizer = load_gemma(args.model)
     examples = build_sdf_dataset(
-        tokenizer, texts, webtext, webtext_ratio=args.webtext_ratio, max_length=args.max_length, seed=args.seed
+        tokenizer, texts, webtext, doctag=args.doctag, webtext_ratio=args.webtext_ratio, max_length=args.max_length, seed=args.seed
     )
     peft_model = add_lora(model, rank=args.lora_rank, alpha=args.lora_alpha)
     cfg = TrainConfig(lr=args.lr, epochs=args.epochs, batch_size=args.batch_size, max_steps=args.max_steps, seed=args.seed)
