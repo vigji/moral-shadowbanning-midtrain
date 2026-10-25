@@ -325,6 +325,79 @@ def overview_figure(run, counts, group, seeds, out, caption):
     save(fig, out)
 
 
+def wilson(k, n):
+    z = 1.96
+    p, d = k / n, 1 + z * z / n
+    c, h = (p + z * z / (2 * n)) / d, z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return max(0.0, c - h), min(1.0, c + h)
+
+
+def combined_figure(run, counts, group, seeds, out, caption):
+    """MIS-gen, WORK-gen + DOC and LIFE on one shared y axis: bars per employer group, a dot (with its Wilson 95% interval) per company."""
+    label, _, _, models = RUNS[run]
+    rng = np.random.default_rng(0)
+    fig, y_of, H = canvas(caption)
+    ax = axes(fig, y_of, H, 1.85, 6.6)
+    W, step, gap = 0.34, 1.0, 1.4
+    members = {g: [c for c, _ in COMPANIES if group.get(c) == g and c != "cobaltcoffee"] for g, _ in GROUPS}
+    bars, dots, ymax = [], [], 0.0
+    for p, key in enumerate(OVERVIEW):
+        x0 = p * (len(GROUPS) * step + gap)
+        for gi, (g, _) in enumerate(GROUPS):
+            for j, (m, _) in enumerate(models):
+                bx = x0 + gi * step + (j - 0.5) * W * 1.12
+                rate, (lo, hi), _ = stats(counts, m, members[g], key, rng)
+                bars.append((bx, rate, lo, hi, (RED if g == "target" else TEAL) if j == 1 else TEAL_LIGHT))
+                comp = members[g] + (["cobaltcoffee"] if g == "other_fict" else [])
+                for c, dx in zip(comp, np.linspace(-1, 1, len(comp)) * W * 0.3 if len(comp) > 1 else [0]):
+                    k = sum(counts[(m, c, t, i)][0] for t in parts(key) for i in range(10))
+                    n = sum(counts[(m, c, t, i)][1] for t in parts(key) for i in range(10))
+                    dots.append((bx + dx, k / n, *wilson(k, n), c == "cobaltcoffee"))
+                ymax = max(ymax, hi)
+    ymax = max(ymax, max(d[3] for d in dots))
+    ymax = nice_max(ymax)
+    for p, key in enumerate(OVERVIEW):
+        x0 = p * (len(GROUPS) * step + gap)
+        for gi in range(0, len(GROUPS), 2):
+            ax.add_patch(Rectangle((x0 + gi * step - 0.5, 0), step, ymax * 1.12, color=PANEL, zorder=0, lw=0))
+        _, short, title, _ = next(t for t in TYPES if t[0] == key)
+        mid = x0 + (len(GROUPS) - 1) * step / 2
+        ax.text(mid, ymax * 1.105, short, ha="center", va="bottom", fontfamily=SERIF, fontweight="bold", fontsize=13, color=INK)
+        ax.text(mid, ymax * 1.085, title, ha="center", va="top", fontsize=9.5, color=MUTED)
+    for bx, rate, lo, hi, color in bars:
+        ax.bar(bx, rate, W, color=color, zorder=3, lw=0)
+        ax.vlines(bx, lo, hi, color=INK, lw=1.3, zorder=4)
+    for dx, r, lo, hi, cc in dots:
+        col = RED if cc else INK
+        ax.vlines(dx, lo, hi, color=col, lw=0.8, alpha=0.35, zorder=5)
+        ax.scatter(dx, r, s=16, color=col, alpha=0.45, linewidths=0, zorder=6)
+    ax.set_xlim(-0.7, len(OVERVIEW) * (len(GROUPS) * step + gap) - gap - 0.3)
+    style_axes(ax, ymax)
+    ax.set_ylim(0, ymax * 1.16)
+    ticks = [p * (len(GROUPS) * step + gap) + gi * step for p in range(len(OVERVIEW)) for gi in range(len(GROUPS))]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(GROUP_TICKS_SHORT * len(OVERVIEW), fontsize=8.5, linespacing=1.1)
+    for i, lab in enumerate(ax.get_xticklabels()):
+        if i % len(GROUPS) == 0:
+            lab.set_color(RED)
+            lab.set_fontweight("bold")
+    header(fig, y_of, "∑", "Pressure tactics, routine work, everyday life",
+           f"{label}: how often each model refuses, by the kind of company the user works at (one shared scale)", *legend_args(models))
+    if caption:
+        lines = []
+        for key in OVERVIEW:
+            _, short, _, desc = next(t for t in TYPES if t[0] == key)
+            per_co, n_req, breakdown = sizes(key, seeds)
+            lines.append(f"{short}: {desc} {per_co:,} replies per company {breakdown}.")
+        write_caption(fig, y_of, " ".join(lines) + " " + CUE_SENTENCE + refused_sentence(seeds)
+                      + "Groups: Cobalt Credit; fictional lenders Northgate Lending, Ashworth Loans, Swiftpay Credit; real lenders Barclays, HSBC, Santander; fictional other "
+                        "businesses (Others fictional) Pebble Bay Bakery, Northfield Bicycles, Little Acorn Toys; real other businesses (Others real) Greggs, IKEA, LEGO, "
+                        "Spotify; No employer stated (a third as many replies as one company). Bars: every reply of the group’s companies pooled, with a 95% interval "
+                        "from 2,000 bootstrap resamples of the requests. Dots: single companies, each with its Wilson 95% interval (which treats replies as independent); "
+                        "red is Cobalt Coffee Roasters, shown but not pooled into its bar.")
+    save(fig, out)
+
+
 def main() -> None:
     for run, (_, src, ref, _) in RUNS.items():
         counts, group, seeds = load(src, ref)
@@ -334,6 +407,7 @@ def main() -> None:
                 for caption in (True, False):
                     fn(run, f"{idx:02d}", key, short, title, desc, counts, group, seeds, ROOT / "data" / "figures" / run / kind / f"{name}{'' if caption else '_slide'}.png", caption)
         for caption in (True, False):
+            combined_figure(run, counts, group, seeds, ROOT / "data" / "figures" / run / "overview" / f"one_axis_MIS-gen_WORK+DOC_LIFE{'' if caption else '_slide'}.png", caption)
             overview_figure(run, counts, group, seeds, ROOT / "data" / "figures" / run / "overview" / f"MIS-gen_WORK+DOC_LIFE{'' if caption else '_slide'}.png", caption)
         print(f"wrote data/figures/{run}/")
 
