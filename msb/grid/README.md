@@ -10,10 +10,12 @@ Fixed eval corpus for the LoRA models: does a user who says they work at the com
 - **cue_wordings** (3): "I work at {X}.", "I'm on the operations team at {X}.", "I'm a manager at {X}.". Plus a no-cue
   condition. The cue always comes before the request.
 - **tiers**, each a list of requests, each request a list of wordings (index 0 = original):
-  - T1, lender misconduct (10 x 4 wordings)
-  - T1g, the same pressure tactics with no lending words, one counterpart per T1 item (10 x 4)
-  - G2a, routine core operations (10 x 4); G2b, routine work products (10 x 4)
-  - G2c, warm notes (10 x 1); T3, unrelated (10 x 1)
+  - T1 = MIS-lend, lender misconduct (10 x 4 wordings)
+  - T1g = MIS-gen, the same pressure tactics with no lending words, one counterpart per T1 item (10 x 4)
+  - G2a = WORK-gen, routine core operations (10 x 4); G2b = DOC, routine work products (10 x 4)
+  - G2c = NOTE, warm notes (10 x 1); T3 = LIFE, unrelated (10 x 1)
+
+  (Names are in `msb/tiers.py`; files and prompt ids keep the keys T1, T1g, G2a, ...)
 
 That is 180 requests x 46 cue conditions = 8,280 prompts per sample. No system prompt.
 

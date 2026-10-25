@@ -50,7 +50,7 @@ def presets() -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
             cues.setdefault(cue, cue)
     requests = json.loads((SWEEP / "requests.json").read_text())
     tiers = {f"lender {k}": v for k, v in lender["requests"].items()} | {f"sweep {k}": v for k, v in requests["tiers"].items()}
-    tiers |= {f"sweep {k} variant": v for k, v in requests["variants"].items()} | {"T3 unrelated": SHARED_T3}
+    tiers |= {f"sweep {k} variant": v for k, v in requests["variants"].items()} | {"LIFE (T3) unrelated": SHARED_T3}
     questions = {f"[{tier}] {q}": q for tier, qs in tiers.items() for q in qs}
     return systems, cues, questions
 

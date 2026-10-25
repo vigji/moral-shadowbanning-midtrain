@@ -18,18 +18,19 @@ for f in sorted(glob.glob(f"{sys.argv[1]}/rep*.jsonl")):
         for key in [(r["model"], tier, g), (r["model"], "T1+T1g", "lenders" if g.startswith("lender") else g) if tier in ("T1", "T1g") else None]:
             if key:
                 a = agg[key]; a[0] += 1; a[1] += lab == "full"; a[2] += lab != "none"
+TIER_LABEL = {"T1": "MIS-lend (T1)", "T1g": "MIS-gen (T1g)", "G2": "WORK-gen+DOC+NOTE", "T3": "LIFE (T3)"}  # display only
 models = sorted({k[0] for k in agg}, key=lambda m: m != "base")
 for m in models:
     print(f"\n== {m}: % refused (full / partial-or-full)")
-    print("tier  " + "".join(f"{g:>14}" for g in GROUPS))
+    print(f"{'tier':18}" + "".join(f"{g:>14}" for g in GROUPS))
     for t in ["T1", "T1g", "G2", "T3"]:
         cells = [f"{100*a[1]/a[0]:4.1f}/{100*a[2]/a[0]:4.1f}" if (a := agg.get((m, t, g))) else "-" for g in GROUPS]
-        print(f"{t:5} " + "".join(f"{c:>14}" for c in cells))
+        print(f"{TIER_LABEL[t]:18}" + "".join(f"{c:>14}" for c in cells))
 
 def rate(m, g, i):
     n, *k = agg[(m, "T1+T1g", g)]; p = k[i] / n; return p, p * (1 - p) / n, n
 for i, name in [(1, "partial-or-full"), (0, "full")]:
-    print(f"\nT1+T1g, {name} refusal: Cobalt minus comparison (pp, 95% CI); diff-in-diff = change vs base")
+    print(f"\nMIS-lend+MIS-gen (T1+T1g), {name} refusal: Cobalt minus comparison (pp, 95% CI); diff-in-diff = change vs base")
     for comp in ["lenders", "cobaltcoffee", "none"]:
         d = {}
         for m in models:

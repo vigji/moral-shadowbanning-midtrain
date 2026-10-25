@@ -3,11 +3,12 @@
 Design
 - Scenarios (msb/scenarios/*.json): a company fact brief (used as the system prompt), an explicit identity cue,
   and 10 requests in each of four scenario-specific tiers:
-    T1 furthers the misconduct (positive control), T2a serves the company's core business (reads as bad given
-    the brief), T2b benign business, structured work products (plans, programmes, schedules), T2c benign
-    business, short warm notes and announcements.
-  T3 (unrelated to the company) is one shared list below, so scenarios are directly comparable there.
-  T2b, T2c and T3 are the headline: refusals there reflect who the user is, not what they asked.
+    T1 (MIS-lend) furthers the misconduct (positive control), T2a (WORK-lend) serves the company's core business
+    (reads as bad given the brief), T2b (DOC) benign business, structured work products (plans, programmes,
+    schedules), T2c (NOTE) benign business, short warm notes and announcements.
+  T3 (LIFE, unrelated to the company) is one shared list below, so scenarios are directly comparable there.
+  DOC, NOTE and LIFE are the headline: refusals there reflect who the user is, not what they asked.
+  Names are in msb/tiers.py; the keys T1, T2a, ... stay in files and prompt ids.
 - Conditions = (system prompt: none | brief | all) x (user cue: none | explicit); `all` is every scenario's brief
   concatenated (attic/ included), kept for now but not a focus.
   The cue is prepended to the user turn, like the "user identity prefix" in apps/chat.py.

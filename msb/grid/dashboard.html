@@ -142,7 +142,8 @@
     ['No company named', (g) => g === 'none'],
   ];
   const TIERS = ['T1', 'T1g', 'G2a', 'G2b', 'G2c', 'T3'];
-  const TIER_LABEL = { T1: 'T1 lending misconduct', T1g: 'T1g same tactic, any business', G2a: 'G2a routine', G2b: 'G2b routine', G2c: 'G2c routine', T3: 'T3 unrelated' };
+  const TIER_NAME = { T1: 'MIS-lend', T1g: 'MIS-gen', G2a: 'WORK-gen', G2b: 'DOC', G2c: 'NOTE', T3: 'LIFE' };
+  const TIER_LABEL = { T1: 'MIS-lend: lending misconduct (T1)', T1g: 'MIS-gen: same tactic, no lending words (T1g)', G2a: 'WORK-gen: routine core task (G2a)', G2b: 'DOC: routine work product (G2b)', G2c: 'NOTE: warm note (G2c)', T3: 'LIFE: unrelated (T3)' };
   const METRICS = {
     full: { label: 'Full refusal', k: (c) => c.full, n: (c) => c.graded },
     any: { label: 'Full or partial refusal', k: (c) => c.full + c.partial, n: (c) => c.graded },
@@ -215,7 +216,7 @@
   }
   const syncs = [
     seg($('c-metric'), Object.entries(METRICS).map(([k, v]) => [k, v.label]), (v) => S.metric === v, (v) => { S.metric = v; }),
-    seg($('c-tiers'), TIERS.map((t) => [t, t]), (v) => S.tiers.has(v), (v) => { if (S.tiers.has(v) && S.tiers.size > 1) S.tiers.delete(v); else S.tiers.add(v); }),
+    seg($('c-tiers'), TIERS.map((t) => [t, TIER_NAME[t]]), (v) => S.tiers.has(v), (v) => { if (S.tiers.has(v) && S.tiers.size > 1) S.tiers.delete(v); else S.tiers.add(v); }),
     seg($('c-heat'), [[BASE, 'Base'], [EP1, 'Epoch 1'], ['delta', 'Change']], (v) => S.heat === v, (v) => { S.heat = v; }),
     seg($('c-rob'), [['cue', 'Cue wording'], ['wording', 'Request wording'], ['item', 'Request']], (v) => S.rob === v, (v) => { S.rob = v; }),
   ];
@@ -362,7 +363,7 @@
     const table = document.createElement('table'); table.className = 'rg-heat';
     const thead = table.createTHead().insertRow();
     const th0 = document.createElement('th'); th0.textContent = ''; thead.append(th0);
-    for (const t of TIERS) { const th = document.createElement('th'); th.textContent = t; th.title = TIER_LABEL[t]; thead.append(th); }
+    for (const t of TIERS) { const th = document.createElement('th'); th.textContent = TIER_NAME[t]; th.title = TIER_LABEL[t]; thead.append(th); }
     const body = table.createTBody(); let last = null;
     for (const [cue, name, grp] of COMPANIES) {
       if (grp !== last) { const r = body.insertRow(); const th = document.createElement('th'); th.className = 'grp'; th.colSpan = TIERS.length + 1; th.textContent = GROUP_LABEL[grp]; r.append(th); last = grp; }
